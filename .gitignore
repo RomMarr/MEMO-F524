@@ -9,8 +9,11 @@ Trash/
 notes.ipynb
 DP.ipynb
 SM2.ipynb
+pinn_*
 
 
 # Files generated during training
 *.pickle
 *.hdf5
+
+*.pyc
