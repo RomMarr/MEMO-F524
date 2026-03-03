@@ -1,5 +1,5 @@
 import numpy as np
-from tqdm import tqdm
+from tqdm.auto import tqdm
 import torch
 
 # This function builds a supervised dataset to train a NN. It learns the seismograms at sensors, not the full wavefield u(x,y,t).

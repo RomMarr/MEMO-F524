@@ -5,12 +5,16 @@ import torch.nn.functional as F
 from M2.Utils.conditions import apply_dirichlet
 
 class PINN(nn.Module):
-    def __init__(self, width=32):
+    def __init__(self, width=64):
         super().__init__()
         # self.layer1 = nn.Conv2d(2,1,kernel_size=3,padding="same")
         # self.layer1 = nn.Conv2d(3,1,kernel_size=3,padding="same")
         self.net = nn.Sequential(
             nn.Conv2d(3, width, kernel_size=3, padding="same"),
+            nn.Tanh(),
+            nn.Conv2d(width, width, kernel_size=3, padding="same"),
+            nn.Tanh(),
+            nn.Conv2d(width, width, kernel_size=3, padding="same"),
             nn.Tanh(),
             nn.Conv2d(width, width, kernel_size=3, padding="same"),
             nn.Tanh(),
@@ -26,7 +30,7 @@ class PINN(nn.Module):
 
 
 class PinnForwardSolver:
-    def __init__(self, model, sensors, x_min, x_max, y_min, y_max, Nx, Ny, Nt, dt, h, device="cpu"):
+    def __init__(self, model, sensors, x_min, x_max, y_min, y_max, Nx, Ny, Nt, dt, h, c, device="cpu"):
         self.model = model
         self.device = device
 
@@ -37,6 +41,7 @@ class PinnForwardSolver:
         self.y_min, self.y_max = y_min, y_max
         self.Nx, self.Ny, self.Nt = Nx, Ny, Nt
         self.dt, self.h = dt, h
+        self.c = c
 
         x = torch.linspace(self.x_min, self.x_max, self.Nx, device=device)
         y = torch.linspace(self.y_min, self.y_max, self.Ny, device=device)
@@ -71,8 +76,7 @@ class PinnForwardSolver:
         """
         ex,ey: torch scalars 
         """
-        c_scalar = torch.as_tensor(1.0, device=self.device, dtype=self.X.dtype)
-        c_field = c_scalar * torch.ones((1,1,self.Ny,self.Nx), device=self.device, dtype=self.X.dtype)
+        c_field = self.c * torch.ones((1,1,self.Ny,self.Nx), device=self.device, dtype=self.X.dtype)
 
         F = self._make_source_F(ex, ey)  # (Nt,1,Ny,Nx)
 

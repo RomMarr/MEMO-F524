@@ -4,7 +4,7 @@ from M2.Utils.source import ricker_source
 from M2.Utils.conditions import apply_dirichlet
 
 import torch
-from tqdm import tqdm
+from tqdm.auto import tqdm
 
 def train_pinn(epochs: int, dt: float, h: float, Nt: int, c:float,lr:float, device="cpu"):
     model = PINN().to(device=device)

@@ -47,8 +47,8 @@ def plot_epicenters(e_true,
         plt.scatter(e_hat_pinn_t03[0], e_hat_pinn_t03[1],
                     marker='.', s=100, label='PINN (t* = 0.8)')
 
-    plt.xlim(0.1, 0.5)
-    plt.ylim(-0.4, 0)
+    plt.xlim(-1, 1)
+    plt.ylim(-1, 1)
     plt.xlabel("x")
     plt.ylabel("y")
     plt.title("Predicted epicenters")
