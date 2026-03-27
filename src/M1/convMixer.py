@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import numpy as np
-from utils import NMSE_by_coordinate
+from M1.utils import NMSE_by_coordinate
 
 
 class Residual(nn.Module):

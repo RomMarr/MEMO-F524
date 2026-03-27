@@ -1,6 +1,45 @@
 import matplotlib.pyplot as plt
 import numpy as np
+import torch
 
+
+def check_seismograms(model, fd_seis: dict,t_fd: np.ndarray, c_val: float = 5.0, t_max: float = 5.0, n_t: int = 500, device: str = "cpu"):
+    c  = c_val 
+    x  = torch.ones(n_t, 1, device=device)
+    y  = torch.zeros(n_t, 1, device=device)
+    t  = torch.linspace(0, t_max, n_t, device=device).unsqueeze(1)
+ 
+    with torch.no_grad():
+        p_neg1 = model(-x, y, torch.zeros_like(x), torch.zeros_like(y), t).squeeze().cpu().numpy()
+        # p_zero = model(0*x, y, torch.zeros_like(x), torch.zeros_like(y), t).squeeze().cpu().numpy()
+        p_pos1 = model(x, y, torch.zeros_like(x), torch.zeros_like(y), t).squeeze().cpu().numpy()
+ 
+    t_np = t.squeeze().cpu().numpy()
+    # pinn_seis = {'(-1,0)': p_neg1, '(0,0)': p_zero, '(1,0)': p_pos1}
+    pinn_seis = {'(-1,0)': p_neg1, '(1,0)': p_pos1}
+
+    
+    fig, axes = plt.subplots(len(pinn_seis),1, figsize=(12, 7))
+    if len(pinn_seis) == 2:
+        receiver_labels = ['(-1,0)', '(1,0)']
+
+
+ 
+    for ax, label in zip(axes, receiver_labels):
+        ax.plot(t_np,  pinn_seis[label], label='PINN',linewidth=1.5)
+        ax.plot(t_fd,  fd_seis[label],   label='Reference', linewidth=1.5,
+                linestyle='--', color='tomato')
+        ax.set_title(f"Receiver {label}")
+        ax.set_xlabel("Time")
+        ax.set_ylabel("Amplitude")
+        ax.legend()
+        ax.grid(True)
+ 
+    # fig.suptitle(f"Seismograms — c = {c_val}  (PINN vs Finite Difference reference)",
+    fig.suptitle(f"Seismograms : observed vs PINN",
+                 fontsize=13)
+    plt.tight_layout()
+    plt.show()
 
 def plot_epicenters(e_true,
                     e_hat_dp=None,

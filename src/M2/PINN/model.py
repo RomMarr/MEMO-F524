@@ -1,96 +1,58 @@
-import torch
 import torch.nn as nn
-import torch.nn.functional as F
+import torch
 
-from M2.Utils.conditions import apply_dirichlet
 
-class PINN(nn.Module):
-    def __init__(self, width=64):
+def g(t, alpha=1.0):
+    return 1-1/torch.cosh(5*t)
+
+class AcousticPINN(nn.Module):
+    def __init__(self, n_layers=8, layer_width=32):
         super().__init__()
-        # self.layer1 = nn.Conv2d(2,1,kernel_size=3,padding="same")
-        # self.layer1 = nn.Conv2d(3,1,kernel_size=3,padding="same")
-        self.net = nn.Sequential(
-            nn.Conv2d(3, width, kernel_size=3, padding="same"),
-            nn.Tanh(),
-            nn.Conv2d(width, width, kernel_size=3, padding="same"),
-            nn.Tanh(),
-            nn.Conv2d(width, width, kernel_size=3, padding="same"),
-            nn.Tanh(),
-            nn.Conv2d(width, width, kernel_size=3, padding="same"),
-            nn.Tanh(),
-            nn.Conv2d(width, 1, kernel_size=3, padding="same"),
-        )
-
+        self.n_layers = n_layers
+        self.layer_width = layer_width
         
-    def forward(self, u_prev, u_curr, c):
-        # return self.layer1(torch.cat([u_prev, u_curr, c], dim=1))
-        return self.net(torch.cat([u_prev, u_curr, c], dim=1))
-    # def forward(self, u_t, c):
-    #     return self.layer1(torch.cat([u_t, c], dim=1))
+        self.lift = nn.Sequential(nn.Linear(5, self.layer_width), nn.Tanh())
+        self.layers1 = nn.ModuleList([nn.Sequential(nn.Linear(self.layer_width, self.layer_width), nn.Tanh()) for i in range(self.n_layers)])
+        self.layers2 = nn.ModuleList([nn.Sequential(nn.Linear(self.layer_width, self.layer_width), nn.Tanh()) for i in range(self.n_layers)])
+        self.compress = nn.Sequential(nn.Linear(self.layer_width, self.layer_width), nn.Tanh())
+        self.output = nn.Sequential(nn.Linear(self.layer_width, 1))
+                                
+    def forward(self, x, y, x0, y0, t):
+        inits = torch.cat([x, y, x0, y0, t], dim=-1)
+        o = [self.lift(inits)]
+        for i in range(self.n_layers):
+            o.append(self.layers1[i](o[-1]))
+        p = [o[-1]]
+        for i in range(self.n_layers):
+            p.append(self.layers2[i](p[-1])+o[-(i+1)])            
+        return self.output(self.compress(p[-1])) * g(t)
+     
 
-
-class PinnForwardSolver:
-    def __init__(self, model, sensors, x_min, x_max, y_min, y_max, Nx, Ny, Nt, dt, h, c, device="cpu"):
+class PINNForwardSolver:
+    def __init__(self, model, sensors, t_max=5.0, n_t=500,
+                 x_min=-5, x_max=5, y_min=-5, y_max=5,
+                 device="cpu"):
         self.model = model
-        self.device = device
-
         self.sensors = sensors.to(device)
-        self.K = self.sensors.shape[0]
-
+        self.K = sensors.shape[0]
+        self.t_max = t_max
+        self.Nt = n_t
+        self.dt = t_max / (n_t - 1)
         self.x_min, self.x_max = x_min, x_max
         self.y_min, self.y_max = y_min, y_max
-        self.Nx, self.Ny, self.Nt = Nx, Ny, Nt
-        self.dt, self.h = dt, h
-        self.c = c
-
-        x = torch.linspace(self.x_min, self.x_max, self.Nx, device=device)
-        y = torch.linspace(self.y_min, self.y_max, self.Ny, device=device)
-        X, Y = torch.meshgrid(x, y, indexing="xy")
-        self.X = X.T.contiguous()
-        self.Y = Y.T.contiguous()
+        self.device = device
 
     def get_bounds(self):
         return (self.x_min, self.x_max), (self.y_min, self.y_max)
 
-    def _sample_sensors(self, u):
-        # u: (1,1,Ny,Nx) -> (K,)
-        x = self.sensors[:, 0]
-        y = self.sensors[:, 1]
-        x_n = 2 * (x - self.x_min) / (self.x_max - self.x_min) - 1
-        y_n = 2 * (y - self.y_min) / (self.y_max - self.y_min) - 1
-        grid = torch.stack([x_n, y_n], dim=-1).view(1, -1, 1, 2)  # (1,K,1,2)
-        vals = F.grid_sample(u, grid, mode="bilinear", align_corners=True)  # (1,1,K,1)
-        return vals.view(-1)
-
-    def _make_source_F(self, ex, ey, A=5, f0=10, t0=0.1, gamma=50):
-        t = torch.arange(self.Nt, device=self.device) * self.dt
-        tau = t - t0
-        pi2f2 = (torch.pi**2) * (f0**2)
-        ricker = (1 - 2*pi2f2*(tau**2)) * torch.exp(-pi2f2*(tau**2))  # (Nt,)
-
-        space = torch.exp(-gamma * ((self.X - ex)**2 + (self.Y - ey)**2))  # (Ny,Nx)
-        Fsrc = A * ricker[:, None, None] * space[None, :, :]              # (Nt,Ny,Nx)
-        return Fsrc.unsqueeze(1)  # (Nt,1,Ny,Nx)
-
-    def forward(self, ex, ey):
-        """
-        ex,ey: torch scalars 
-        """
-        c_field = self.c * torch.ones((1,1,self.Ny,self.Nx), device=self.device, dtype=self.X.dtype)
-
-        F = self._make_source_F(ex, ey)  # (Nt,1,Ny,Nx)
-
-        u_prev = torch.zeros((1,1,self.Ny,self.Nx), device=self.device, dtype=self.X.dtype)
-        u_curr = torch.zeros((1,1,self.Ny,self.Nx), device=self.device, dtype=self.X.dtype)
-
-        traces = torch.empty((self.Nt, self.K), device=self.device, dtype=self.X.dtype)
-
-        for n in range(self.Nt):
-            traces[n] = self._sample_sensors(u_curr)
-            if n < self.Nt - 1:
-                u_next = self.model(u_prev, u_curr, c_field) + (self.dt*self.dt) * F[n]                
-                # u_next = self.model(u_curr, c_field) + (self.dt*self.dt) * F[n]
-                u_next = apply_dirichlet(u_next)
-                u_prev, u_curr = u_curr, u_next 
-
-        return traces
+    def forward(self, e_x, e_y):
+        t = torch.linspace(0, self.t_max, self.Nt, device=self.device).unsqueeze(1)
+        traces = []
+        for k in range(self.K):
+            sx = torch.full((self.Nt, 1), self.sensors[k, 0].item(), device=self.device)
+            sy = torch.full((self.Nt, 1), self.sensors[k, 1].item(), device=self.device)
+            x0 = torch.full((self.Nt, 1), 1.0, device=self.device) * e_x
+            y0 = torch.full((self.Nt, 1), 1.0, device=self.device) * e_y
+            p = self.model(sx, sy, x0, y0, t).squeeze()
+            traces.append(p)
+        return torch.stack(traces, dim=1)  # (Nt, K)

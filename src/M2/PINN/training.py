@@ -1,45 +1,29 @@
-from M2.PINN.model import PINN
-from M2.PINN.loss import laplacian, pde_loss
-from M2.Utils.source import ricker_source
-from M2.Utils.conditions import apply_dirichlet
-
-import torch
 from tqdm.auto import tqdm
+import torch
+import torch.optim as optim
+from M2.Utils.visualization import check_seismograms
+from M2.PINN.loss import loss_fn
 
-def train_pinn(epochs: int, dt: float, h: float, Nt: int, c:float,lr:float, device="cpu"):
-    model = PINN().to(device=device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-    x_min, x_max = -1, 1
-    y_min, y_max = -1, 1
-    c = c * torch.ones((1,1,101,101), device=device)
-    H = W = 101
-    x = torch.linspace(-1, 1, W, device=device)
-    y = torch.linspace(-1, 1, H, device=device)
-    x_grid, y_grid = torch.meshgrid(x, y, indexing="xy")   # both (W,H)
-    x_grid = x_grid.T.contiguous()  # -> (H,W)
-    y_grid = y_grid.T.contiguous()  # -> (H,W)
 
-    for epoch in (info:=tqdm(range(epochs))):
-        u_prev = torch.zeros((1,1,H,W), device=device)
-        u_curr = torch.zeros((1,1,H,W), device=device)
-    
-        ex = 2 * torch.rand((), device=device) - 1  # scalar tensor
-        ey = 2 * torch.rand((), device=device) - 1  # scalar tensor
-        f = ricker_source(Nt, H, W,dt, x_grid, y_grid, ex, ey, device=device)    
-        for n in range(Nt-1):
-            optimizer.zero_grad()
+def train_pinn(model, fd_seis,t_fd, n_iterations=10001, n_points=int(1e4), lr=1e-3, device="cpu"):
+    optimizer = optim.Adam(model.parameters(), lr=lr)
+    # scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5, threshold=5e0, patience=200)
 
-            # u_next = model(u_curr, c) + ((dt*dt) * f[n])   # f[n] : (1,1,H,W)
-            u_next = model(u_prev, u_curr, c) + (dt*dt) * f[n]  # f[n] : (1,1,H,W)
-            u_next = apply_dirichlet(u_next)
+    for step in (pbar:=tqdm(range(n_iterations))):
+        optimizer.zero_grad()
+        x = (torch.rand(n_points, 1, requires_grad=True, device=device)-0.5)*10
+        y = (torch.rand(n_points, 1, requires_grad=True, device=device)-0.5)*10
+        x0 = (torch.rand(n_points, 1, requires_grad=True, device=device)-0.5)*5
+        y0 = (torch.rand(n_points, 1, requires_grad=True, device=device)-0.5)*5
+        t = (torch.rand(n_points, 1, requires_grad=True, device=device))*15
 
-            loss = pde_loss(u_prev, u_curr, u_next, c, f[n], dt, h)
-            loss.backward()
-            optimizer.step()
+        loss_pde = loss_fn(model, x, y, x0, y0, t)
 
-            u_prev = u_curr.detach()
-            u_curr = u_next.detach()
-
-        if epoch % 10 == 0:
-            info.set_description(f"loss={loss.item():.4e}")
+        pbar.set_description(f"Loss PDE: {loss_pde.item():.5e}")#, l_r: {scheduler.get_last_lr()[-1]:.3e}")
+        loss_pde.backward()
+        optimizer.step()
+        # scheduler.step(loss_pde)
+        if step%500 == 0:
+            print(f"Iteration {step}")
+            check_seismograms(model, fd_seis, t_fd=t_fd, device=device)
     return model

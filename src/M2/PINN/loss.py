@@ -1,15 +1,12 @@
-import torch
-import torch.nn.functional as F
+import torch 
+from M2.Utils.source import source
 
-def laplacian(u, h):
-    # u: (B,1,H,W)
-    k = torch.tensor([[0,1,0],
-                      [1,-4,1],
-                      [0,1,0]], device=u.device, dtype=u.dtype).view(1,1,3,3) / (h*h)
-    return F.conv2d(u, k, padding=1)
-
-def pde_loss(u_prev, u_curr, u_next, c, f_n, dt, h):
-    utt = (u_next - 2*u_curr + u_prev) / (dt*dt)
-    lap = laplacian(u_curr, h)
-    R = utt - (c*c) * lap - f_n
-    return (R*R).mean()
+def loss_fn(model, x, y, x0, y0, t):
+    pred = model(x, y, x0, y0, t)
+    ones = torch.ones_like(pred)
+    dp_dx, dp_dy, dp_dt = torch.autograd.grad(pred, [x, y, t], grad_outputs=ones, create_graph=True)
+    dp_dxx = torch.autograd.grad(dp_dx, x, grad_outputs=ones, create_graph=True)[0]
+    dp_dyy = torch.autograd.grad(dp_dy, y, grad_outputs=ones, create_graph=True)[0]
+    dp_dtt = torch.autograd.grad(dp_dt, t, grad_outputs=ones, create_graph=True)[0]
+    pde_res = dp_dtt - (5**2) * (dp_dxx + dp_dyy) - source(x, y, t, cx=x0, cy=y0)
+    return (pde_res**2).mean()

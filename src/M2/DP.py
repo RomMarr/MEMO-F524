@@ -3,7 +3,7 @@ import torch.nn.functional as F
 import math
 
 from M2.Utils.conditions import apply_dirichlet
-from M2.PINN.loss import laplacian
+from M2.PINN2.loss import laplacian
 
 class DPForwardSolver:
     """
@@ -22,7 +22,6 @@ class DPForwardSolver:
         A=5, t0=0.1, f0=10, gamma=50, # source params
         device="cpu", dtype=torch.float32
     ):
-
         self.device = device
         self.dtype = dtype
 

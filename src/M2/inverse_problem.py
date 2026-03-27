@@ -18,6 +18,7 @@ def inverse_function(
     c_min = 0.5, 
     c_max = 2, 
     lam_c = 1e-6,
+    max_iter=3,
     device="cpu",
     dtype=torch.float32
 ):
@@ -55,9 +56,9 @@ def inverse_function(
     scale = traces_obs[n_star:].std(dim=0, unbiased=False).clamp_min(1e-6)
 
     if c_init is None:
-        opt = torch.optim.LBFGS([e_x, e_y], lr=lr, max_iter=20, line_search_fn="strong_wolfe")
+        opt = torch.optim.LBFGS([e_x, e_y], lr=lr, max_iter=3, line_search_fn="strong_wolfe")
     else: 
-        opt = torch.optim.LBFGS([e_x, e_y, c], lr=lr, max_iter=20, line_search_fn="strong_wolfe")
+        opt = torch.optim.LBFGS([e_x, e_y, c], lr=lr, max_iter=3, line_search_fn="strong_wolfe")
 
     def loss_and_pred():
         traces_pred = forward.forward(e_x, e_y) if c_init is None else forward.forward(e_x, e_y, c) # (Nt,K)
@@ -70,6 +71,7 @@ def inverse_function(
         loss_data = torch.sum((pred - obs) ** 2)
         loss_reg = lam * (e_x**2 + e_y**2) if c_init is None else lam * (e_x**2 + e_y**2) + lam_c * (c - c_init)**2
         return loss_data + loss_reg, loss_data, traces_pred
+    history = []
 
     for it in tqdm(range(steps)):
         def closure():
@@ -80,9 +82,12 @@ def inverse_function(
 
         opt.step(closure)
         clamp()
+        history.append((e_x.item(), e_y.item()))
+
 
     with torch.no_grad():
         _, _, traces_pred_final = loss_and_pred()
 
+
     e_hat = torch.stack([e_x.detach(), e_y.detach()])
-    return e_hat, traces_pred_final.detach(), n_star
+    return e_hat, traces_pred_final.detach(), n_star, history
