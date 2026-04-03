@@ -56,9 +56,9 @@ def inverse_function(
     scale = traces_obs[n_star:].std(dim=0, unbiased=False).clamp_min(1e-6)
 
     if c_init is None:
-        opt = torch.optim.LBFGS([e_x, e_y], lr=lr, max_iter=3, line_search_fn="strong_wolfe")
+        opt = torch.optim.LBFGS([e_x, e_y], lr=lr, max_iter=max_iter, line_search_fn="strong_wolfe")
     else: 
-        opt = torch.optim.LBFGS([e_x, e_y, c], lr=lr, max_iter=3, line_search_fn="strong_wolfe")
+        opt = torch.optim.LBFGS([e_x, e_y, c], lr=lr, max_iter=max_iter, line_search_fn="strong_wolfe")
 
     def loss_and_pred():
         traces_pred = forward.forward(e_x, e_y) if c_init is None else forward.forward(e_x, e_y, c) # (Nt,K)

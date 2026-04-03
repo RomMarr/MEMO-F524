@@ -3,6 +3,49 @@ import numpy as np
 import torch
 
 
+import numpy as np
+import torch
+import matplotlib.pyplot as plt
+
+
+def check_seismograms2(
+    model,
+    fd_seis,
+    t_fd,
+    sensors,
+    e_x=0,
+    e_y=0,
+    device="cpu",
+):
+    model.eval()
+
+    t = torch.tensor(t_fd, dtype=torch.float32, device=device).unsqueeze(1)
+
+    plt.figure(figsize=(10, 4 * len(fd_seis)))
+
+    for i, (key, trace_true) in enumerate(fd_seis.items(), start=1):
+        sx, sy = sensors[i - 1]
+
+        sx_t = torch.full((len(t_fd), 1), float(sx), device=device)
+        sy_t = torch.full((len(t_fd), 1), float(sy), device=device)
+        x0_t = torch.full((len(t_fd), 1), float(e_x), device=device)
+        y0_t = torch.full((len(t_fd), 1), float(e_y), device=device)
+
+        with torch.no_grad():
+            trace_pred = model(sx_t, sy_t, x0_t, y0_t, t).squeeze().cpu().numpy()
+
+        plt.subplot(len(fd_seis), 1, i)
+        plt.plot(t_fd, trace_true, label="DP / observed")
+        plt.plot(t_fd, trace_pred, "--", label="PINN")
+        plt.title(f"Sensor {key}")
+        plt.xlabel("t")
+        plt.ylabel("Amplitude")
+        plt.legend()
+        plt.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    plt.show()
+
 def check_seismograms(model, fd_seis: dict,t_fd: np.ndarray, c_val: float = 5.0, t_max: float = 5.0, n_t: int = 500, device: str = "cpu"):
     c  = c_val 
     x  = torch.ones(n_t, 1, device=device)

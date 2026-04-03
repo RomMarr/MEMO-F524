@@ -51,8 +51,8 @@ class PINNForwardSolver:
         for k in range(self.K):
             sx = torch.full((self.Nt, 1), self.sensors[k, 0].item(), device=self.device)
             sy = torch.full((self.Nt, 1), self.sensors[k, 1].item(), device=self.device)
-            x0 = torch.full((self.Nt, 1), 1.0, device=self.device) * e_x
-            y0 = torch.full((self.Nt, 1), 1.0, device=self.device) * e_y
+            x0 = torch.full((self.Nt, 1), 1, device=self.device) * e_x
+            y0 = torch.full((self.Nt, 1), 1, device=self.device) * e_y
             p = self.model(sx, sy, x0, y0, t).squeeze()
             traces.append(p)
         return torch.stack(traces, dim=1)  # (Nt, K)
