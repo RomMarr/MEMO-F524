@@ -3,7 +3,7 @@ import torch.nn.functional as F
 import math
 
 from M2.Utils.conditions import apply_dirichlet
-from M2.PINN2.loss import laplacian
+from M2.PINN.loss import laplacian
 
 class DPForwardSolver:
     """
@@ -19,10 +19,10 @@ class DPForwardSolver:
     def __init__(
         self,
         sensors: torch.Tensor,         # (K,2)
-        c=1,
+        c_fn, # c(x, y, t)
         x_min=-1, x_max=1, y_min=-1, y_max=1,
         Nx=101, Ny=101, Nt=401, T=2,
-        A=5, t0=0.1, f0=10, gamma=50, # source params
+        A=5.0, t0=0.1, f0=10.0, gamma=50.0, # source params
         device="cpu", dtype=torch.float32
     ):
         self.device = device
@@ -34,10 +34,11 @@ class DPForwardSolver:
         self.Nx, self.Ny, self.Nt, self.T = Nx, Ny, Nt, T
  
         # physics: c can be a scalar or a (Ny, Nx) tensor
-        if isinstance(c, torch.Tensor):
-            self.c = c.to(device=self.device, dtype=self.dtype)
-        else:
-            self.c = torch.as_tensor(c, device=self.device, dtype=self.dtype)
+        self.c_fn = c_fn
+        # if isinstance(c, torch.Tensor):
+        #     self.c = c.to(device=self.device, dtype=self.dtype)
+        # else:
+        #     self.c = torch.as_tensor(c, device=self.device, dtype=self.dtype)
  
         # source
         self.A = A
@@ -58,18 +59,21 @@ class DPForwardSolver:
         if abs(self.dx - self.dy) > 1e-7:
             raise ValueError("DPForwardSolver2D requires dx == dy (uniform square grid) for this stencil.")
         self.h = self.dx
- 
         self.dt = self.T / (self.Nt - 1)
- 
-        # CFL check: use the maximum wave speed in the field
-        c_max = self.c.max() if self.c.dim() > 0 else self.c
-        if c_max * self.dt / self.h > 1 / math.sqrt(2):
-            raise ValueError("CFL unstable: decrease dt (increase Nt), increase h (decrease Nx/Ny), or reduce c.")
  
         # meshgrid for source evaluation (Ny, Nx)
         X, Y = torch.meshgrid(self.x, self.y, indexing="xy")  # (Nx,Ny)
         self.X = X.T.contiguous()  # (Ny,Nx)
-        self.Y = Y.T.contiguous()        
+        self.Y = Y.T.contiguous() 
+
+        # CFL check: use the maximum wave speed in the field
+        # c_max = self.c.max() if self.c.dim() > 0 else self.c
+        c_field = self.c_fn(self.X, self.Y).to(device=self.device, dtype=self.dtype)
+        if c_field.max() * self.dt / self.h > 1 / math.sqrt(2):
+            raise ValueError("CFL unstable: decrease dt (increase Nt), increase h (decrease Nx/Ny), or reduce c.")
+        self.c_field = c_field.unsqueeze(0).unsqueeze(0) # (1,1,Ny,Nx)
+        self.cdt2 = (self.c_field * self.dt) ** 2
+        self.dt2 = self.dt ** 2
  
     def get_bounds(self):
         return (self.x_min, self.x_max), (self.y_min, self.y_max)
@@ -97,19 +101,19 @@ class DPForwardSolver:
         vals = F.grid_sample(u, grid, mode="bilinear", align_corners=True)  # (1,1,K,1)
         return vals.view(-1)
  
-    def _prepare_c(self, c):
-        """
-        Ensures c has shape (1, 1, Ny, Nx) for broadcasting with the
-        wavefield tensors.  Accepts a scalar, a (Ny, Nx) tensor, or an
-        nn.Parameter of either shape.
-        """
-        if c.dim() == 0:
-            # scalar: broadcast is automatic, but we still expand for clarity
-            return c
-        # already (Ny, Nx) or similar
-        return c.view(1, 1, self.Ny, self.Nx)
+    # def _prepare_c(self, c):
+    #     """
+    #     Ensures c has shape (1, 1, Ny, Nx) for broadcasting with the
+    #     wavefield tensors.  Accepts a scalar, a (Ny, Nx) tensor, or an
+    #     nn.Parameter of either shape.
+    #     """
+    #     if c.dim() == 0:
+    #         # scalar: broadcast is automatic, but we still expand for clarity
+    #         return c
+    #     # already (Ny, Nx) or similar
+    #     return c.view(1, 1, self.Ny, self.Nx)
  
-    def forward(self, e_x, e_y, return_field=False, c=None):
+    def forward(self, e_x, e_y, return_field=False):
         """
         e_x, e_y: epicenter coordinates (float, tensor, or nn.Parameter)
         c: wave speed, either a scalar or a (Ny, Nx) tensor / nn.Parameter.
@@ -127,15 +131,13 @@ class DPForwardSolver:
         else:
             e_y = e_y.to(device=self.device, dtype=self.dtype)
  
-        if c is None:
-            c = self.c
-        else:
-            if not isinstance(c, torch.Tensor):
-                c = torch.as_tensor(c, device=self.device, dtype=self.dtype)
-            else:
-                c = c.to(device=self.device, dtype=self.dtype)
- 
-        c_field = self._prepare_c(c)  # scalar or (1,1,Ny,Nx)
+        # if c is None:
+        #     c = self.c
+        # else:
+        #     if not isinstance(c, torch.Tensor):
+        #         c = torch.as_tensor(c, device=self.device, dtype=self.dtype)
+        #     else:
+        #         c = c.to(device=self.device, dtype=self.dtype)
  
         u_prev = torch.zeros((1, 1, self.Ny, self.Nx), device=self.device, dtype=self.dtype)
         u_curr = torch.zeros((1, 1, self.Ny, self.Nx), device=self.device, dtype=self.dtype)
@@ -143,9 +145,6 @@ class DPForwardSolver:
         seismograms = torch.zeros((self.Nt, self.K), device=self.device, dtype=self.dtype)
         if return_field:
             u_hist = torch.empty((self.Nt, self.Ny, self.Nx), device=self.device, dtype=self.dtype)
- 
-        cdt2 = (c_field * self.dt) ** 2   # scalar or (1,1,Ny,Nx)
-        dt2 = (self.dt ** 2)
  
         for n in range(self.Nt):
             t = torch.as_tensor(n * self.dt, device=self.device, dtype=self.dtype)
@@ -157,7 +156,7 @@ class DPForwardSolver:
             if n < self.Nt - 1:
                 lap = laplacian(u_curr, self.h)
                 f = self._source(t, e_x, e_y)
-                u_next = 2 * u_curr - u_prev + cdt2 * lap + dt2 * f
+                u_next = 2 * u_curr - u_prev + self.cdt2 * lap + self.dt2 * f
                 u_next = apply_dirichlet(u_next)
                 u_prev, u_curr = u_curr, u_next
         if return_field:

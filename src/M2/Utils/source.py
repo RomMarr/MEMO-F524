@@ -12,7 +12,7 @@ def ricker_source(Nt, H, W, dt, x_grid, y_grid, ex, ey,A=5, f0=10, t0=0.1, gamma
     return f.unsqueeze(1)  # (Nt,1,H,W)
 
 
-def source(x, y, t, cx=0, cy=0, sigma=.3, amplitude_g=1e2, f=1.0, amplitude_r=1.0, t0=1.0):
+def source(x, y, t, cx=0, cy=0, sigma=1, amplitude_g=1e2, f=1.0, amplitude_r=1.0, t0=1.0):
     dx, dy = x - cx, y - cy
     gaussian = amplitude_g * torch.exp(-(dx**2/(2*sigma**2)+dy**2/(2*sigma**2)))
     tau = t - t0

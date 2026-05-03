@@ -2,12 +2,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
-
-import numpy as np
-import torch
-import matplotlib.pyplot as plt
-
-
 def check_seismograms2(
     model,
     fd_seis,
