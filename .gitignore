@@ -2,23 +2,8 @@
 .DS_Store
 
 #Folders not used
-plots/
-PINN2/
-Examples/
 Trash/
 Others/
 
-# Notebooks to test ideas
-notes.ipynb
-DP.ipynb
-SM2.ipynb
-temp.ipynb
-plots.ipynb
-
-pinn_*
-
-# Files generated during training
-*.pickle
-*.hdf5
-
+# Other files 
 *.pyc
