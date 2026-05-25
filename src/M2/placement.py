@@ -52,7 +52,7 @@ def optimize_sensors(
 
         dist_between = torch.norm(sensors[0] - sensors[1])
         reg_separation =  0.1 * torch.exp(-dist_between)  # penalize collapse
-        reg_center = 0.1 * (sensors ** 2).mean() # penalize sensors far from center
+        reg_center = 0.01 * (sensors ** 2).mean() # penalize sensors far from center
         loss = total_error / epicenters.shape[0] + reg_center + reg_separation
         loss.backward()
 
