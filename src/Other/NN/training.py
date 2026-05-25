@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from M2.NN.model import Neural_Network
+from Other.NN.model import Neural_Network
 from M2.Utils.conditions import apply_dirichlet
 
 def train_nn(model, X, y, epochs=50, batch_size=4096, lr=1e-3, device="cpu"):

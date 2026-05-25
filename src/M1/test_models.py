@@ -1,3 +1,8 @@
+""" 
+Run tests for all models and store the results.
+Some of the code does not work as it was only used during the development phase to find the best models and parameters, but it is kept for reference.
+"""
+
 from utils import *
 import numpy as np
 from sklearn.linear_model import LinearRegression, Ridge, Lasso
