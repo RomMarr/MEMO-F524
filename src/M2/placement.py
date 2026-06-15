@@ -4,10 +4,11 @@ from M2.PINN.model import PINNForwardSolver
 from M2.inverse_problem import inverse_function, inverse_function_differentiable
 
 
-
+# Sensor placement optimization using bilevel optimization with a PINN 
+# forward solver and differentiable inner inversion
 def optimize_sensors(
     pinn_model, sensors_init, 
-    epicenters,             # (M, 2) tensor — sampled epicenter positions
+    epicenters,             # (M, 2), sampled epicenter positions
     guess_init=(1.0, 1.0),
     t_max=5.0, n_t=500,
     x_min=-5, x_max=5,
@@ -27,9 +28,11 @@ def optimize_sensors(
         device=device,
     )
 
+    # outer optimizer for sensor positions
     outer_opt = torch.optim.Adam([sensors], lr=outer_lr)
     history = []
 
+    # outer loop for sensor placement optimization
     for step in range(outer_steps):
         outer_opt.zero_grad()
 
@@ -50,6 +53,7 @@ def optimize_sensors(
             )
             total_error = total_error + (e_hat[0] - ex_true)**2 + (e_hat[1] - ey_true)**2
 
+        # regularization terms to encourage good sensor placement
         dist_between = torch.norm(sensors[0] - sensors[1])
         reg_separation =  0.1 * torch.exp(-dist_between)  # penalize collapse
         reg_center = 0.01 * (sensors ** 2).mean() # penalize sensors far from center
@@ -75,7 +79,7 @@ def optimize_sensors(
 
     return sensors.detach(), history
 
-
+# Local search around the best sensor configuration found by random search
 def local_search(
     pinn_model, sensors_best, epicenters,
     n_neighbors=10, perturbation=0.5,
@@ -86,6 +90,7 @@ def local_search(
     best_loss = evaluate_loss(pinn_model, sensors_best, epicenters, device)
     print(f"Initial loss: {best_loss:.4f}")
 
+    # loop over random perturbations of the best sensor configuration
     for i in range(n_neighbors):
         # perturb current best
         noise = torch.randn_like(sensors_best) * perturbation
@@ -102,13 +107,13 @@ def local_search(
         )
 
         loss = evaluate_loss(pinn_model, sensors_opt, epicenters, device)
-
         if loss < best_loss:
             best_loss = loss
             sensors_best = sensors_opt
     return sensors_best, best_loss
 
 
+# Evaluate the average loss over a set of epicenters for a given sensor configuration
 def evaluate_loss(pinn_model, sensors, epicenters, device):
     solver = PINNForwardSolver(
         model=pinn_model, sensors=sensors,
@@ -117,6 +122,7 @@ def evaluate_loss(pinn_model, sensors, epicenters, device):
         device=device,
     )
     total = 0
+    # loop over all epicenters and compute the average squared error of the estimated epicenter from the true one
     for m in range(epicenters.shape[0]):
         ex, ey = epicenters[m, 0].item(), epicenters[m, 1].item()
         traces_obs = solver.forward(ex, ey).detach()

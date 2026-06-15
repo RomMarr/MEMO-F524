@@ -1,11 +1,13 @@
 import torch.nn as nn
 import torch
 
+# Causal multiplier function to ensure that the source is null before activation time t0
 def g(t, t0, alpha=5.0):
     return 0.5 * (torch.tanh(alpha * (t + t0)) + 1)
 
+# Physics-Informed Neural Network (PINN) for the 2D acoustic wave equation
 class PINN(nn.Module):
-    def __init__(self, width=64, depth=4):
+    def __init__(self, width=64, depth=3):
         super().__init__()
         self.input_layer = nn.Sequential(nn.Linear(6, width), nn.Mish())
         self.hidden_layers = nn.ModuleList([
@@ -20,9 +22,10 @@ class PINN(nn.Module):
         for layer in self.hidden_layers:
             h = layer(h) + h
         p = self.output_layer(h)
-        return p * g(t - t0, t0 / 10)
+        return p * g(t - t0, t0/10)
 
 
+# PINN-based forward solver that evaluates the PINN at sensor locations and time steps
 class PINNForwardSolver:
     def __init__(self, model, sensors, t_max=5.0, n_t=500,t0=1.0,
                  x_min=-5, x_max=5, y_min=-5, y_max=5,
@@ -41,6 +44,7 @@ class PINNForwardSolver:
     def get_bounds(self):
         return (self.x_min, self.x_max), (self.y_min, self.y_max)
 
+    # Evaluate the PINN at sensor locations and time steps to get seismograms
     def forward(self, e_x, e_y):
         if not isinstance(e_x, torch.Tensor):
             e_x = torch.tensor(float(e_x), device=self.device)

@@ -5,21 +5,12 @@ import math
 from M2.Utils.conditions import apply_dirichlet
 from M2.PINN.loss import laplacian
 
+# DP-based forward solver for the 2D acoustic wave equation
 class DPForwardSolver:
-    """
-    Differentiable-physics forward solver for the 2D acoustic wave equation
-    using an explicit second-order finite-difference time-stepping scheme.
- 
-    Supports both a scalar wave speed c and a spatially varying
-    velocity field c of shape (Ny, Nx).
- 
-    forward(e_x, e_y) -> seismograms (Nt, K)
-    """
- 
     def __init__(
         self,
-        sensors: torch.Tensor,         # (K,2)
-        c_fn, # c(x, y, t)
+        sensors: torch.Tensor,   
+        c_fn, 
         x_min=-1, x_max=1, y_min=-1, y_max=1,
         Nx=101, Ny=101, Nt=401, T=2,
         A=5.0, t0=0.1, f0=10.0, gamma=50.0, # source params
@@ -33,13 +24,9 @@ class DPForwardSolver:
         self.y_min, self.y_max = y_min, y_max
         self.Nx, self.Ny, self.Nt, self.T = Nx, Ny, Nt, T
  
-        # physics: c can be a scalar or a (Ny, Nx) tensor
+        # c can be a scalar or a (Ny, Nx) tensor
         self.c_fn = c_fn
-        # if isinstance(c, torch.Tensor):
-        #     self.c = c.to(device=self.device, dtype=self.dtype)
-        # else:
-        #     self.c = torch.as_tensor(c, device=self.device, dtype=self.dtype)
- 
+
         # source
         self.A = A
         self.t0 = t0
@@ -66,8 +53,7 @@ class DPForwardSolver:
         self.X = X.T.contiguous()  # (Ny,Nx)
         self.Y = Y.T.contiguous() 
 
-        # CFL check: use the maximum wave speed in the field
-        # c_max = self.c.max() if self.c.dim() > 0 else self.c
+        # CFL check : use the maximum wave speed in the field
         c_field = self.c_fn(self.X, self.Y).to(device=self.device, dtype=self.dtype)
         if c_field.max() * self.dt / self.h > 1 / math.sqrt(2):
             raise ValueError("CFL unstable: decrease dt (increase Nt), increase h (decrease Nx/Ny), or reduce c.")
@@ -78,8 +64,8 @@ class DPForwardSolver:
     def get_bounds(self):
         return (self.x_min, self.x_max), (self.y_min, self.y_max)
  
+    # Ricker wavelet source term for the wave equation, returns a (1,1,Ny,Nx) tensor at time t
     def _source(self, t: torch.Tensor, e_x: torch.Tensor, e_y: torch.Tensor) -> torch.Tensor:
-        # returns (1,1,Ny,Nx)
  
         # Ricker wavelet in time
         tau = t - self.t0
@@ -101,26 +87,8 @@ class DPForwardSolver:
         vals = F.grid_sample(u, grid, mode="bilinear", align_corners=True)  # (1,1,K,1)
         return vals.view(-1)
  
-    # def _prepare_c(self, c):
-    #     """
-    #     Ensures c has shape (1, 1, Ny, Nx) for broadcasting with the
-    #     wavefield tensors.  Accepts a scalar, a (Ny, Nx) tensor, or an
-    #     nn.Parameter of either shape.
-    #     """
-    #     if c.dim() == 0:
-    #         # scalar: broadcast is automatic, but we still expand for clarity
-    #         return c
-    #     # already (Ny, Nx) or similar
-    #     return c.view(1, 1, self.Ny, self.Nx)
- 
+    # Main forward method to run the DP solver and return seismograms at sensor locations
     def forward(self, e_x, e_y, return_field=False):
-        """
-        e_x, e_y: epicenter coordinates (float, tensor, or nn.Parameter)
-        c: wave speed, either a scalar or a (Ny, Nx) tensor / nn.Parameter.
-           If None, uses self.c.
- 
-        Returns seismograms: (Nt, K)
-        """
         if not isinstance(e_x, torch.Tensor):
             e_x = torch.tensor(float(e_x), device=self.device, dtype=self.dtype)
         else:
@@ -131,28 +99,23 @@ class DPForwardSolver:
         else:
             e_y = e_y.to(device=self.device, dtype=self.dtype)
  
-        # if c is None:
-        #     c = self.c
-        # else:
-        #     if not isinstance(c, torch.Tensor):
-        #         c = torch.as_tensor(c, device=self.device, dtype=self.dtype)
-        #     else:
-        #         c = c.to(device=self.device, dtype=self.dtype)
- 
         u_prev = torch.zeros((1, 1, self.Ny, self.Nx), device=self.device, dtype=self.dtype)
         u_curr = torch.zeros((1, 1, self.Ny, self.Nx), device=self.device, dtype=self.dtype)
  
         seismograms = torch.zeros((self.Nt, self.K), device=self.device, dtype=self.dtype)
         if return_field:
             u_hist = torch.empty((self.Nt, self.Ny, self.Nx), device=self.device, dtype=self.dtype)
- 
+
+        # time-stepping loop
         for n in range(self.Nt):
             t = torch.as_tensor(n * self.dt, device=self.device, dtype=self.dtype)
             seismograms[n] = self._sample_sensors(u_curr)
  
+            # store field if requested
             if return_field:
                 u_hist[n] = u_curr[0, 0]
  
+            # DP update for the next time step
             if n < self.Nt - 1:
                 lap = laplacian(u_curr, self.h)
                 f = self._source(t, e_x, e_y)
