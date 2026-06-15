@@ -18,9 +18,9 @@ presented in the thesis: forward solver comparison, batch inversion accuracy,
 noise robustness, runtime benchmark and interrogator placement optimization.
 It also serves as the reference for how to use the M2 package.
 
-## M2 package
+## M2 folder
 
-The core library used throughout the thesis.
+The code used throughout the thesis.
 
 - `DP.py` — differentiable finite-difference forward solver built in PyTorch.
   Fully differentiable with respect to the epicenter coordinates, enabling
@@ -28,10 +28,9 @@ The core library used throughout the thesis.
 - `inverse_problem.py` — epicenter inversion via gradient-based misfit minimization.
 - `placement.py` — bilevel interrogator placement optimization, combining
   gradient-based outer loop and iterated local search.
-- `PINN/` — physics-informed neural network surrogate: architecture, PDE residual
-  loss and training loop.
-- `Utils/` — shared utilities: Ricker wavelet source, dataset generation and
-  visualization helpers.
+- `PINN/` — physics-informed neural network surrogate's architecture, PDE residual
+  loss.
+- `Utils/` — shared utilities : Ricker wavelet source and visualization helpers.
 
 ## M1 folder
 
