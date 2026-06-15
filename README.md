@@ -14,13 +14,13 @@ All source code lives in `src/`.
 ## Getting started
 
 `experiments.ipynb` is the main notebook. It walks through all the experiments
-presented in the thesis: forward solver comparison, batch inversion accuracy,
-noise robustness, runtime benchmark and interrogator placement optimization.
-It also serves as the reference for how to use the M2 package.
+presented in the thesis. The forward solver comparison, the batch inversion accuracy,
+the noise robustness, the runtime benchmark and the interrogator placement optimization.
+It also serves as the reference for how to use the code of the thesis.
 
 ## M2 folder
 
-The code used throughout the thesis.
+The code used for the thesis.
 
 - `DP.py` — differentiable finite-difference forward solver built in PyTorch.
   Fully differentiable with respect to the epicenter coordinates, enabling
